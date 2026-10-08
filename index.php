@@ -271,6 +271,7 @@ if ($action !== '') {
     <title>Зашифрованный чат</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="icon" type="image/png" href="favicon.png">
+
 </head>
 <body>
 <main class="shell">
