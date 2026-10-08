@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0b1020">
+    <title>Страница не найдена — 404</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" type="image/png" href="favicon.png">
+    <style>
+        .error-page {
+            display: grid;
+            min-height: calc(100vh - 64px);
+            place-items: center;
+        }
+
+        .error-card {
+            position: relative;
+            width: min(620px, 100%);
+            overflow: hidden;
+            padding: clamp(28px, 7vw, 56px);
+            text-align: center;
+        }
+
+        .error-card::before {
+            position: absolute;
+            top: -130px;
+            left: 50%;
+            width: 280px;
+            height: 280px;
+            border-radius: 50%;
+            background: rgb(139 124 255 / 14%);
+            content: "";
+            filter: blur(4px);
+            transform: translateX(-50%);
+            pointer-events: none;
+        }
+
+        .error-content {
+            position: relative;
+        }
+
+        .error-art {
+            display: grid;
+            width: 82px;
+            height: 82px;
+            margin: 0 auto 22px;
+            place-items: center;
+            border: 1px solid #514b91;
+            border-radius: 25px;
+            background: linear-gradient(145deg, #292751, #192a43);
+            box-shadow: 0 12px 36px rgb(0 0 0 / 24%);
+            color: #c4baff;
+        }
+
+        .error-code {
+            margin: 0;
+            color: var(--text);
+            font-size: clamp(72px, 16vw, 112px);
+            font-weight: 800;
+            letter-spacing: -0.09em;
+            line-height: 1;
+            text-shadow: 0 0 42px rgb(139 124 255 / 26%);
+        }
+
+        .error-title {
+            margin: 18px 0 10px;
+            font-size: clamp(21px, 5vw, 28px);
+            letter-spacing: -0.5px;
+        }
+
+        .error-description {
+            max-width: 390px;
+            margin: 0 auto;
+            color: var(--muted);
+        }
+
+        .error-actions {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 12px;
+            margin-top: 28px;
+        }
+
+        .error-actions a {
+            text-decoration: none;
+        }
+
+        .error-actions .primary {
+            min-height: 44px;
+        }
+
+        .error-note {
+            margin: 28px 0 0;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        @media (max-width: 560px) {
+            .error-page {
+                min-height: calc(100vh - 36px);
+            }
+
+            .error-card {
+                padding: 32px 20px;
+            }
+
+            .error-actions {
+                flex-direction: column;
+            }
+
+            .error-actions a,
+            .error-actions button {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main class="shell error-page">
+        <section class="card error-card" aria-labelledby="error-title">
+            <div class="error-content">
+                <div class="error-art" aria-hidden="true">
+                    <svg
+                        width="42"
+                        height="42"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                    >
+                        <path
+                            d="M8 8L16 16M16 8L8 16"
+                            stroke="currentColor"
+                            stroke-width="1.8"
+                            stroke-linecap="round"
+                        />
+                        <circle
+                            cx="12"
+                            cy="12"
+                            r="9"
+                            stroke="currentColor"
+                            stroke-width="1.5"
+                            opacity=".75"
+                        />
+                    </svg>
+                </div>
+
+                <p class="error-code" aria-label="Ошибка 404">404</p>
+                <h1 class="error-title" id="error-title">Кажется, вы свернули не туда</h1>
+                <p class="error-description">
+                    Такой страницы нет или она переехала. Давайте вернёмся туда,
+                    где всё на своих местах.
+                </p>
+
+                <nav class="error-actions" aria-label="Действия">
+                    
+                    <button class="quiet" type="button" onclick="history.back()">
+                        ← Вернуться назад
+                    </button>
+		    <button class="primary" type="button" onclick="window.location.href='/'">    На главную</button>
+                </nav>
+
+                <p class="error-note">Ошибка 404 · Страница не найдена</p>
+            </div>
+        </section>
+    </main>
+</body>
+</html>
