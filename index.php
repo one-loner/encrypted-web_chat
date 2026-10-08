@@ -269,316 +269,8 @@ if ($action !== '') {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Зашифрованный чат</title>
-    <style>
-        :root {
-            color-scheme: dark;
-            --bg: #0b1020;
-            --panel: #121a2b;
-            --panel-soft: #182338;
-            --border: #28354d;
-            --text: #edf2ff;
-            --muted: #9eacc4;
-            --accent: #8b7cff;
-            --accent-hover: #a397ff;
-            --danger: #ff8792;
-            --bubble: #1c2940;
-        }
+    <link rel="stylesheet" href="styles.css">
 
-        * {
-            box-sizing: border-box;
-        }
-
-        body {
-            min-height: 100vh;
-            margin: 0;
-            padding: 32px 16px;
-            color: var(--text);
-            background:
-                radial-gradient(ellipse at 10% 0%, #23204a 0, transparent 36rem),
-                radial-gradient(ellipse at 100% 100%, #102d40 0, transparent 34rem),
-                var(--bg);
-            font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
-        }
-
-        .shell {
-            width: min(900px, 100%);
-            margin: 0 auto;
-        }
-
-        .brand {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            margin: 0 0 24px;
-        }
-
-        .brand-icon {
-            display: grid;
-            width: 48px;
-            height: 48px;
-            place-items: center;
-            border: 1px solid #514b91;
-            border-radius: 15px;
-            background: linear-gradient(145deg, #292751, #192a43);
-            font-size: 23px;
-        }
-
-        h1,
-        h2,
-        p {
-            margin-top: 0;
-        }
-
-        h1 {
-            margin-bottom: 2px;
-            font-size: 23px;
-            letter-spacing: -0.4px;
-        }
-
-        h2 {
-            margin-bottom: 12px;
-            font-size: 16px;
-        }
-
-        .subtitle,
-        .hint,
-        .message-meta {
-            color: var(--muted);
-        }
-
-        .subtitle {
-            margin: 0;
-            font-size: 13px;
-        }
-
-        .card {
-            overflow: hidden;
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            background: rgb(18 26 43 / 94%);
-            box-shadow: 0 24px 80px rgb(0 0 0 / 28%);
-        }
-
-        .login-card {
-            max-width: 480px;
-            margin: 50px auto;
-            padding: 26px;
-        }
-
-        .chat-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 16px;
-            padding: 20px 24px;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .security-label {
-            color: #b8f2d3;
-            font-size: 12px;
-        }
-
-        .chat-body {
-            padding: 24px;
-        }
-
-        label {
-            display: block;
-            margin: 14px 0 6px;
-            color: #c9d4e8;
-            font-size: 13px;
-            font-weight: 600;
-        }
-
-        input,
-        textarea {
-            width: 100%;
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            outline: none;
-            padding: 12px 14px;
-            color: var(--text);
-            background: #0d1525;
-            font: inherit;
-            transition: border-color .15s, box-shadow .15s;
-        }
-
-        input:focus,
-        textarea:focus {
-            border-color: var(--accent);
-            box-shadow: 0 0 0 3px rgb(139 124 255 / 15%);
-        }
-
-        textarea {
-            min-height: 105px;
-            resize: vertical;
-        }
-
-        button,
-        .file-button {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            min-height: 42px;
-            border: 1px solid var(--border);
-            border-radius: 11px;
-            padding: 9px 14px;
-            color: var(--text);
-            background: var(--panel-soft);
-            font: inherit;
-            font-weight: 650;
-            cursor: pointer;
-            transition: transform .15s, background .15s, border-color .15s;
-        }
-
-        button:hover,
-        .file-button:hover {
-            transform: translateY(-1px);
-            border-color: #566588;
-            background: #22304a;
-        }
-
-        button.primary {
-            border-color: transparent;
-            color: white;
-            background: linear-gradient(135deg, #7464ed, #9274f2);
-        }
-
-        button.primary:hover {
-            background: linear-gradient(135deg, #8375f5, #a184fb);
-        }
-
-        button.quiet {
-            min-height: 36px;
-            color: var(--muted);
-            background: transparent;
-        }
-
-        .login-submit {
-            width: 100%;
-            margin-top: 20px;
-        }
-
-        .composer-actions {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            margin-top: 12px;
-        }
-
-        .composer-left {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            min-width: 0;
-        }
-
-        #fileInput {
-            display: none;
-        }
-
-        #selectedFile {
-            overflow: hidden;
-            max-width: 270px;
-            color: var(--muted);
-            font-size: 13px;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        .messages {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            max-height: 55vh;
-            min-height: 150px;
-            overflow: auto;
-            padding: 4px 2px 18px;
-        }
-
-        .message {
-            max-width: min(680px, 100%);
-            border: 1px solid var(--border);
-            border-radius: 15px;
-            padding: 12px 15px;
-            background: var(--bubble);
-        }
-
-        .message-text {
-            overflow-wrap: anywhere;
-            white-space: pre-wrap;
-        }
-
-        .message-meta {
-            margin-bottom: 5px;
-            font-size: 11px;
-        }
-
-        .download-link {
-            display: inline-block;
-            margin-top: 8px;
-            color: #c4baff;
-            text-decoration: none;
-            overflow-wrap: anywhere;
-        }
-
-        .download-link:hover {
-            text-decoration: underline;
-        }
-
-        .divider {
-            height: 1px;
-            margin: 20px 0;
-            background: var(--border);
-        }
-
-        .hint {
-            margin: 8px 0 0;
-            font-size: 12px;
-        }
-
-        #status {
-            min-height: 24px;
-            margin: 12px 2px 0;
-            color: var(--danger);
-            font-size: 13px;
-        }
-
-        [hidden] {
-            display: none !important;
-        }
-
-        @media (max-width: 560px) {
-            body {
-                padding: 18px 10px;
-            }
-
-            .chat-header,
-            .chat-body {
-                padding: 16px;
-            }
-
-            .composer-actions {
-                align-items: stretch;
-                flex-direction: column;
-            }
-
-            .composer-left {
-                flex-wrap: wrap;
-            }
-
-            #selectedFile {
-                max-width: 100%;
-            }
-
-            #sendButton {
-                width: 100%;
-            }
-        }
-    </style>
 </head>
 <body>
 <main class="shell">
@@ -680,6 +372,7 @@ let selectedFile = null;
 let messagesPollTimer = null;
 let messagesLoading = false;
 let lastMessagesSignature = null;
+let currentUser = '';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const PBKDF2_ITERATIONS = 600000;
@@ -688,6 +381,78 @@ const PBKDF2_SALT = new TextEncoder().encode(
 );
 
 const el = id => document.getElementById(id);
+const KEY_DB_NAME = 'encrypted-chat';
+const KEY_STORE_NAME = 'crypto-keys';
+
+function openKeyDb() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(KEY_DB_NAME, 1);
+
+        request.onupgradeneeded = () => {
+            request.result.createObjectStore(KEY_STORE_NAME);
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function saveCryptoKey(username, key) {
+    const db = await openKeyDb();
+
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(KEY_STORE_NAME, 'readwrite');
+        tx.objectStore(KEY_STORE_NAME).put(key, username);
+
+        tx.oncomplete = () => {
+            db.close();
+            resolve();
+        };
+        tx.onerror = () => {
+            db.close();
+            reject(tx.error);
+        };
+    });
+}
+
+async function loadCryptoKey(username) {
+    const db = await openKeyDb();
+
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(KEY_STORE_NAME, 'readonly');
+        const request = tx.objectStore(KEY_STORE_NAME).get(username);
+
+        request.onsuccess = () => {
+            db.close();
+            resolve(request.result ?? null);
+        };
+        request.onerror = () => {
+            db.close();
+            reject(request.error);
+        };
+    });
+}
+
+async function deleteCryptoKey(username) {
+    if (!username) return;
+
+    const db = await openKeyDb();
+
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(KEY_STORE_NAME, 'readwrite');
+        tx.objectStore(KEY_STORE_NAME).delete(username);
+
+        tx.oncomplete = () => {
+            db.close();
+            resolve();
+        };
+        tx.onerror = () => {
+            db.close();
+            reject(tx.error);
+        };
+    });
+}
+
+
 
 function base64Encode(bytes) {
     let binary = '';
@@ -805,8 +570,16 @@ async function login(event) {
         }),
     });
 
-    csrfToken = result.csrf;
-    cryptoKey = await deriveEncryptionKey(passphrase);
+csrfToken = result.csrf;
+currentUser = result.user || el('username').value.trim();
+cryptoKey = await deriveEncryptionKey(passphrase);
+
+try {
+    await saveCryptoKey(currentUser, cryptoKey);
+} catch {
+    setStatus('Ключ не удалось сохранить в этом браузере. После обновления потребуется ввести его снова.');
+}
+
 
     el('password').value = '';
     el('encryptionPassphrase').value = '';
@@ -1015,19 +788,60 @@ async function logout() {
     setStatus();
     stopMessagesPolling();
 
-    await api('logout', { method: 'POST' });
+    const username = currentUser;
 
-    csrfToken = '';
-    cryptoKey = null;
-    selectedFile = null;
-    lastMessagesSignature = null;
+    try {
+        await api('logout', { method: 'POST' });
+    } finally {
+        try {
+            await deleteCryptoKey(username);
+        } catch {
+            // Даже если хранилище недоступно, завершаем выход в интерфейсе.
+        }
 
-    el('chatBox').hidden = true;
-    el('loginBox').hidden = false;
-    el('messages').replaceChildren();
-    el('fileInput').value = '';
-    el('selectedFile').textContent = 'Файл не выбран';
+        csrfToken = '';
+        cryptoKey = null;
+        currentUser = '';
+        selectedFile = null;
+        lastMessagesSignature = null;
+
+        el('chatBox').hidden = true;
+        el('loginBox').hidden = false;
+        el('messages').replaceChildren();
+        el('fileInput').value = '';
+        el('selectedFile').textContent = 'Файл не выбран';
+    }
 }
+
+async function restoreSession() {
+    try {
+        const result = await api('me');
+
+        csrfToken = result.csrf || '';
+        currentUser = result.user || '';
+
+        if (!currentUser) return;
+
+        cryptoKey = await loadCryptoKey(currentUser);
+
+        if (!cryptoKey) {
+            el('username').value = currentUser;
+            setStatus('Сессия сохранена, но для расшифровки сообщений введите ключевую фразу.');
+            return;
+        }
+
+        el('loginBox').hidden = true;
+        el('chatBox').hidden = false;
+
+        lastMessagesSignature = null;
+        await renderMessages();
+        startMessagesPolling();
+    } catch {
+        // Нет активной сессии или браузерное хранилище недоступно.
+    }
+}
+
+
 
 el('loginForm').addEventListener('submit', event => {
     login(event).catch(showError);
@@ -1059,16 +873,10 @@ el('fileInput').addEventListener('change', event => {
         : 'Файл не выбран';
 });
 
-// После перезагрузки ключ шифрования нужно ввести снова.
-api('me')
-    .then(result => {
-        csrfToken = result.csrf;
-        // Без ключевой фразы браузер не может расшифровать сообщения,
-        // поэтому форму входа оставляем видимой.
-    })
-    .catch(() => {
-        // Пользователь не вошёл.
-    });
+// 
+restoreSession().catch(showError);
+
+
 </script>
 <script>
 el('refreshButton').addEventListener('click', async () => {
