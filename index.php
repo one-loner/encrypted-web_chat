@@ -340,7 +340,8 @@ if ($action !== '') {
 
             <button class="primary login-submit" type="submit">
                 Войти в чат
-            </button>
+            </button><br><hr>
+<button class="primary login-submit" type="button" onclick="window.location.href='mobile.html'">    Мобильная версия</button>
         </form>
     </section>
 

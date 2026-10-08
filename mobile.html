@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="chat-api" content="./index.php">
+    <title>Зашифрованный чат</title>
+    <link rel="stylesheet" href="mobile.css">
+</head>
+<body>
+<main class="app">
+    <header class="brand">
+        <div class="brand-icon" aria-hidden="true">✦</div>
+        <div>
+            <h1>Зашифрованный чат</h1>
+            <p>Сообщения шифруются в браузере</p>
+        </div>
+    </header>
+
+    <section id="loginBox" class="panel login-panel">
+        <h2>Войти в чат</h2>
+
+        <form id="loginForm">
+            <label for="username">Логин</label>
+            <input id="username" autocomplete="username" required>
+
+            <label for="password">Пароль учётной записи</label>
+            <input
+                id="password"
+                type="password"
+                autocomplete="current-password"
+                required
+            >
+
+            <label for="encryptionPassphrase">Ключевая фраза шифрования</label>
+            <input
+                id="encryptionPassphrase"
+                type="password"
+                autocomplete="off"
+                minlength="12"
+                required
+                aria-describedby="keyHint"
+            >
+
+            <p id="keyHint" class="hint">
+                Участникам, которым нужно читать одни и те же сообщения,
+                нужна одинаковая ключевая фраза.
+            </p>
+
+            <button class="primary" type="submit">Войти в чат</button>
+        </form>
+    </section>
+
+    <section id="chatBox" class="panel chat-panel" hidden>
+        <header class="chat-header">
+            <div>
+                <h2>Общий чат</h2>
+                <span class="security-label">● Шифрование включено</span>
+            </div>
+
+            <div class="header-actions">
+                <button id="refreshButton" class="quiet" type="button" aria-label="Обновить сообщения">
+                    ↻
+                </button>
+                <button id="logoutButton" class="quiet" type="button">
+                    Выйти
+                </button>
+            </div>
+        </header>
+
+        <div id="messages" class="messages" aria-live="polite"></div>
+
+        <form id="messageForm" class="composer">
+            <label for="message">Сообщение</label>
+            <textarea
+                id="message"
+                maxlength="10000"
+                placeholder="Напишите сообщение…"
+            ></textarea>
+
+            <input id="fileInput" type="file" hidden>
+
+            <div class="composer-actions">
+                <label class="file-button" for="fileInput">
+                    <span aria-hidden="true">＋</span>
+                    Прикрепить файл
+                </label>
+                <span id="selectedFile" class="selected-file">Файл не выбран</span>
+            </div>
+
+            <button id="sendButton" class="primary" type="submit">
+                Зашифровать и отправить
+            </button>
+
+            <p class="hint">Максимальный размер файла — 5 МБ.</p>
+        </form>
+    </section>
+
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+</main>
+
+<script>
+'use strict';
+
+const API_ENDPOINT =
+    document.querySelector('meta[name="chat-api"]').content;
+
+const MAX_FILE_SIZE = 5 * 1024 * 1024;
+const PBKDF2_ITERATIONS = 600000;
+const PBKDF2_SALT = new TextEncoder().encode('encrypted-chat-v1-global-salt');
+const KEY_DB_NAME = 'encrypted-chat';
+const KEY_STORE_NAME = 'crypto-keys';
+
+let csrfToken = '';
+let cryptoKey = null;
+let selectedFile = null;
+let messagesPollTimer = null;
+let messagesLoading = false;
+let lastMessagesSignature = null;
+let currentUser = '';
+
+const el = id => document.getElementById(id);
+
+function setStatus(message = '') {
+    el('status').textContent = message;
+}
+
+function showError(error) {
+    setStatus(error?.message || String(error));
+}
+
+function base64Encode(bytes) {
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return btoa(binary);
+}
+
+function base64Decode(value) {
+    const binary = atob(value);
+    const bytes = new Uint8Array(binary.length);
+
+    for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+
+    return bytes;
+}
+
+function openKeyDb() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(KEY_DB_NAME, 1);
+
+        request.onupgradeneeded = () => {
+            if (!request.result.objectStoreNames.contains(KEY_STORE_NAME)) {
+                request.result.createObjectStore(KEY_STORE_NAME);
+            }
+        };
+
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function saveCryptoKey(username, key) {
+    const db = await openKeyDb();
+
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(KEY_STORE_NAME, 'readwrite');
+        tx.objectStore(KEY_STORE_NAME).put(key, username);
+
+        tx.oncomplete = () => {
+            db.close();
+            resolve();
+        };
+
+        tx.onerror = () => {
+            db.close();
+            reject(tx.error);
+        };
+    });
+}
+
+async function loadCryptoKey(username) {
+    const db = await openKeyDb();
+
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(KEY_STORE_NAME, 'readonly');
+        const request = tx.objectStore(KEY_STORE_NAME).get(username);
+
+        request.onsuccess = () => {
+            db.close();
+            resolve(request.result ?? null);
+        };
+
+        request.onerror = () => {
+            db.close();
+            reject(request.error);
+        };
+    });
+}
+
+async function deleteCryptoKey(username) {
+    if (!username) return;
+
+    const db = await openKeyDb();
+
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(KEY_STORE_NAME, 'readwrite');
+        tx.objectStore(KEY_STORE_NAME).delete(username);
+
+        tx.oncomplete = () => {
+            db.close();
+            resolve();
+        };
+
+        tx.onerror = () => {
+            db.close();
+            reject(tx.error);
+        };
+    });
+}
+
+async function deriveEncryptionKey(passphrase) {
+    const material = await crypto.subtle.importKey(
+        'raw',
+        new TextEncoder().encode(passphrase),
+        'PBKDF2',
+        false,
+        ['deriveKey']
+    );
+
+    return crypto.subtle.deriveKey(
+        {
+            name: 'PBKDF2',
+            salt: PBKDF2_SALT,
+            iterations: PBKDF2_ITERATIONS,
+            hash: 'SHA-256'
+        },
+        material,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['encrypt', 'decrypt']
+    );
+}
+
+async function api(action, options = {}) {
+    const requestSessionToken = csrfToken;
+    const headers = new Headers(options.headers || {});
+    const requestOptions = { ...options };
+    const method = (requestOptions.method || 'GET').toUpperCase();
+
+    if (csrfToken) {
+        headers.set('X-CSRF-Token', csrfToken);
+
+        if (method === 'POST') {
+            headers.set('Content-Type', 'application/json');
+
+            let body = {};
+            if (typeof requestOptions.body === 'string') {
+                try {
+                    body = JSON.parse(requestOptions.body);
+                } catch {
+                    body = {};
+                }
+            }
+
+            requestOptions.body = JSON.stringify({
+                ...body,
+                csrf: csrfToken
+            });
+        }
+    }
+
+    const url = new URL(API_ENDPOINT, window.location.href);
+    url.searchParams.set('action', action);
+
+    const response = await fetch(url, {
+        credentials: 'same-origin',
+        ...requestOptions,
+        headers
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+        if (
+            response.status === 401 &&
+            action !== 'login' &&
+            csrfToken === requestSessionToken
+        ) {
+            await clearLocalChatState();
+        }
+
+        throw new Error(data.error || `Ошибка запроса (${response.status})`);
+    }
+
+    return data;
+}
+
+async function login(event) {
+    event.preventDefault();
+    setStatus();
+
+    const passphrase = el('encryptionPassphrase').value;
+    if (passphrase.trim().length < 12) {
+        throw new Error('Ключевая фраза должна содержать не менее 12 символов.');
+    }
+
+    const result = await api('login', {
+        method: 'POST',
+        body: JSON.stringify({
+            username: el('username').value,
+            password: el('password').value
+        })
+    });
+
+    csrfToken = result.csrf || '';
+    currentUser = result.user || el('username').value.trim();
+    cryptoKey = await deriveEncryptionKey(passphrase);
+
+    try {
+        await saveCryptoKey(currentUser, cryptoKey);
+    } catch {
+        setStatus('Не удалось сохранить ключ в этом браузере. После обновления его потребуется ввести снова.');
+    }
+
+    el('password').value = '';
+    el('encryptionPassphrase').value = '';
+    el('loginBox').hidden = true;
+    el('chatBox').hidden = false;
+
+    lastMessagesSignature = null;
+    await renderMessages();
+    startMessagesPolling();
+}
+
+async function encryptAndSend() {
+    setStatus();
+
+    if (!cryptoKey) {
+        throw new Error('Сначала войдите и введите ключевую фразу.');
+    }
+
+    const text = el('message').value;
+
+    if (!text.trim() && !selectedFile) {
+        throw new Error('Введите сообщение или выберите файл.');
+    }
+
+    let payload;
+
+    if (selectedFile) {
+        if (selectedFile.size > MAX_FILE_SIZE) {
+            throw new Error('Размер файла превышает 5 МБ.');
+        }
+
+        payload = {
+            kind: 'file',
+            name: selectedFile.name,
+            mime: selectedFile.type || 'application/octet-stream',
+            data: base64Encode(new Uint8Array(await selectedFile.arrayBuffer())),
+            text
+        };
+    } else {
+        payload = { kind: 'text', text };
+    }
+
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const plaintext = new TextEncoder().encode(JSON.stringify(payload));
+    const ciphertext = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv },
+        cryptoKey,
+        plaintext
+    );
+
+    await api('messages', {
+        method: 'POST',
+        body: JSON.stringify({
+            iv: base64Encode(iv),
+            ciphertext: base64Encode(new Uint8Array(ciphertext))
+        })
+    });
+
+    el('message').value = '';
+    el('fileInput').value = '';
+    selectedFile = null;
+    el('selectedFile').textContent = 'Файл не выбран';
+
+    lastMessagesSignature = null;
+    await renderMessages();
+}
+
+function addTextMessage(container, text) {
+    const textNode = document.createElement('div');
+    textNode.className = 'message-text';
+    textNode.textContent = text;
+    container.appendChild(textNode);
+}
+
+function addFileLink(container, file) {
+    const blob = new Blob([base64Decode(file.data)], {
+        type: file.mime || 'application/octet-stream'
+    });
+
+    const link = document.createElement('a');
+    link.className = 'download-link';
+    link.href = URL.createObjectURL(blob);
+    link.download = file.name || 'download';
+    link.textContent = `⬇ Скачать: ${file.name || 'файл'}`;
+
+    container.appendChild(link);
+}
+
+async function renderMessages() {
+    if (!cryptoKey || el('chatBox').hidden || messagesLoading) return;
+
+    messagesLoading = true;
+
+    try {
+        const result = await api('messages');
+
+        if (result.csrf) csrfToken = result.csrf;
+        if (!cryptoKey || el('chatBox').hidden) return;
+
+        const records = Array.isArray(result.messages) ? result.messages : [];
+        const signature = records
+            .map(record => record.id ?? `${record.createdAt}:${record.sender}:${record.iv}`)
+            .join('|');
+
+        if (signature === lastMessagesSignature) return;
+        lastMessagesSignature = signature;
+
+        const container = el('messages');
+        const renderingKey = cryptoKey;
+        container.replaceChildren();
+
+        let shown = 0;
+
+        for (const record of records) {
+            try {
+                const plaintext = await crypto.subtle.decrypt(
+                    { name: 'AES-GCM', iv: base64Decode(record.iv) },
+                    renderingKey,
+                    base64Decode(record.ciphertext)
+                );
+
+                if (cryptoKey !== renderingKey || el('chatBox').hidden) return;
+
+                const decoded = new TextDecoder().decode(plaintext);
+                let payload;
+
+                try {
+                    payload = JSON.parse(decoded);
+                } catch {
+                    payload = { kind: 'text', text: decoded };
+                }
+
+                const card = document.createElement('article');
+                const isOwnMessage =
+                    String(record.sender).trim() === String(currentUser).trim();
+
+                card.className = isOwnMessage
+                    ? 'message message--own'
+                    : 'message';
+
+                const meta = document.createElement('div');
+                meta.className = 'message-meta';
+                meta.textContent = `${record.sender} · ${record.createdAt}`;
+                card.appendChild(meta);
+
+                if (payload.kind === 'file') {
+                    if (payload.text) addTextMessage(card, payload.text);
+                    addFileLink(card, payload);
+                } else {
+                    addTextMessage(card, payload.text || '');
+                }
+
+                container.appendChild(card);
+                shown++;
+            } catch {
+                // Пропускаем сообщение с неподходящим ключом или повреждёнными данными.
+            }
+        }
+
+        if (!shown) {
+            const empty = document.createElement('p');
+            empty.className = 'empty-message';
+            empty.textContent = 'Пока нет сообщений, доступных с этим ключом.';
+            container.appendChild(empty);
+        }
+
+        container.scrollTop = container.scrollHeight;
+    } finally {
+        messagesLoading = false;
+    }
+}
+
+function startMessagesPolling() {
+    stopMessagesPolling();
+    messagesPollTimer = setInterval(() => {
+        renderMessages().catch(showError);
+    }, 2000);
+}
+
+function stopMessagesPolling() {
+    if (messagesPollTimer !== null) {
+        clearInterval(messagesPollTimer);
+        messagesPollTimer = null;
+    }
+}
+
+async function clearLocalChatState(username = currentUser) {
+    stopMessagesPolling();
+
+    csrfToken = '';
+    cryptoKey = null;
+    currentUser = '';
+    selectedFile = null;
+    lastMessagesSignature = null;
+
+    el('chatBox').hidden = true;
+    el('loginBox').hidden = false;
+    el('messages').replaceChildren();
+    el('message').value = '';
+    el('password').value = '';
+    el('encryptionPassphrase').value = '';
+    el('fileInput').value = '';
+    el('selectedFile').textContent = 'Файл не выбран';
+
+    try {
+        await deleteCryptoKey(username);
+    } catch {
+        // Очистка интерфейса не зависит от доступности IndexedDB.
+    }
+}
+
+async function logout() {
+    const username = currentUser;
+
+    try {
+        await api('logout', { method: 'POST' });
+    } finally {
+        await clearLocalChatState(username);
+    }
+}
+
+async function restoreSession() {
+    try {
+        const result = await api('me');
+
+        csrfToken = result.csrf || '';
+        currentUser = result.user || '';
+        if (!currentUser) return;
+
+        cryptoKey = await loadCryptoKey(currentUser);
+
+        if (!cryptoKey) {
+            el('username').value = currentUser;
+            setStatus('Сессия сохранена. Войдите и введите ключевую фразу для чтения сообщений.');
+            return;
+        }
+
+        el('loginBox').hidden = true;
+        el('chatBox').hidden = false;
+
+        lastMessagesSignature = null;
+        await renderMessages();
+        startMessagesPolling();
+    } catch {
+        // Нет активной сессии или хранилище недоступно.
+    }
+}
+
+el('loginForm').addEventListener('submit', event => {
+    login(event).catch(showError);
+});
+
+el('messageForm').addEventListener('submit', event => {
+    event.preventDefault();
+    encryptAndSend().catch(showError);
+});
+
+el('logoutButton').addEventListener('click', () => {
+    logout().catch(showError);
+});
+
+el('refreshButton').addEventListener('click', async event => {
+    const button = event.currentTarget;
+    button.disabled = true;
+
+    try {
+        await renderMessages();
+    } catch (error) {
+        showError(error);
+    } finally {
+        button.disabled = false;
+    }
+});
+
+el('fileInput').addEventListener('change', event => {
+    selectedFile = event.target.files[0] || null;
+
+    if (selectedFile && selectedFile.size > MAX_FILE_SIZE) {
+        selectedFile = null;
+        event.target.value = '';
+        el('selectedFile').textContent = 'Файл не выбран';
+        setStatus('Размер файла превышает 5 МБ.');
+        return;
+    }
+
+    setStatus();
+    el('selectedFile').textContent = selectedFile
+        ? `${selectedFile.name} (${(selectedFile.size / 1024 / 1024).toFixed(2)} МБ)`
+        : 'Файл не выбран';
+});
+
+restoreSession().catch(showError);
+</script>
+</body>
+</html>
