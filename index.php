@@ -631,6 +631,8 @@ if ($action !== '') {
                 <h2 style="margin-bottom: 2px">Общий чат</h2>
                 <span class="security-label">● Шифрование включено</span>
             </div>
+<button id="refreshButton" class="quiet" type="button">↻ Обновить</button>
+
             <button id="logoutButton" class="quiet" type="button">Выйти</button>
         </div>
 
@@ -1068,5 +1070,21 @@ api('me')
         // Пользователь не вошёл.
     });
 </script>
+<script>
+el('refreshButton').addEventListener('click', async () => {
+  const button = el('refreshButton');
+  button.disabled = true;
+  setStatus();
+
+  try {
+    await renderMessages();
+  } catch (error) {
+    showError(error);
+  } finally {
+    button.disabled = false;
+  }
+});
+</script>
+
 </body>
 </html>
