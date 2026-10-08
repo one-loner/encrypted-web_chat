@@ -270,7 +270,7 @@ if ($action !== '') {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Зашифрованный чат</title>
     <link rel="stylesheet" href="styles.css">
-    <link rel="icon" type="image/png" href="/favicon.png">
+    <link rel="icon" type="image/png" href="favicon.png">
 </head>
 <body>
 <main class="shell">
