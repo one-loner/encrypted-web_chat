@@ -41,10 +41,49 @@ function jsonReply(array $data, int $status = 200): never
     exit;
 }
 
+function readUserCredential(string $username): ?string
+{
+    $lines = is_file(USERS_FILE)
+        ? file(USERS_FILE, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES)
+        : false;
+
+    if ($lines === false) {
+        throw new RuntimeException('Не удалось прочитать файл пользователей.');
+    }
+
+    foreach ($lines as $line) {
+        $parts = explode(':', $line, 2);
+
+        if (count($parts) === 2 && hash_equals($parts[0], $username)) {
+            return $parts[1];
+        }
+    }
+
+    return null;
+}
+
 function requireLogin(): void
 {
     if (empty($_SESSION['user'])) {
         jsonReply(['error' => 'Требуется вход'], 401);
+    }
+
+    try {
+        $credential = readUserCredential((string) $_SESSION['user']);
+    } catch (Throwable $exception) {
+        error_log((string) $exception);
+        jsonReply(['error' => 'Не удалось проверить сессию'], 500);
+    }
+
+    $sessionVersion = (string) ($_SESSION['auth_version'] ?? '');
+
+    if (
+        $credential === null ||
+        $sessionVersion === '' ||
+        !hash_equals(hash('sha256', $credential), $sessionVersion)
+    ) {
+        unset($_SESSION['user'], $_SESSION['auth_version']);
+        jsonReply(['error' => 'Сессия сброшена. Войдите снова.'], 401);
     }
 }
 
@@ -103,33 +142,20 @@ if ($action === 'login' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         jsonReply(['error' => 'Неверный логин или пароль'], 401);
     }
 
-    $authenticated = false;
-    $lines = file(USERS_FILE, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-
-    foreach ($lines ?: [] as $line) {
-        $parts = explode(':', $line, 2);
-
-        if (count($parts) !== 2) {
-            continue;
-        }
-
-        [$storedUsername, $passwordHash] = $parts;
-
-        if (
-            hash_equals($storedUsername, $username) &&
-            password_verify($password, $passwordHash)
-        ) {
-            $authenticated = true;
-            break;
-        }
+    try {
+        $credential = readUserCredential($username);
+    } catch (Throwable $exception) {
+        error_log((string) $exception);
+        jsonReply(['error' => 'Не удалось проверить учётную запись'], 500);
     }
 
-    if (!$authenticated) {
+    if ($credential === null || !password_verify($password, explode(':', $credential, 2)[0])) {
         jsonReply(['error' => 'Неверный логин или пароль'], 401);
     }
 
     session_regenerate_id(true);
     $_SESSION['user'] = $username;
+    $_SESSION['auth_version'] = hash('sha256', $credential);
     $_SESSION['csrf'] = bin2hex(random_bytes(32));
 
     jsonReply([
@@ -508,6 +534,7 @@ async function deriveEncryptionKey(passphrase) {
 }
 
 async function api(action, options = {}) {
+    const requestSessionToken = csrfToken;
     const headers = new Headers(options.headers || {});
     const requestOptions = { ...options };
 
@@ -546,6 +573,10 @@ async function api(action, options = {}) {
     const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
+        if (response.status === 401 && action !== 'login' && csrfToken === requestSessionToken) {
+            await clearLocalChatState();
+        }
+
         throw new Error(data.error || `Ошибка запроса (${response.status})`);
     }
 
@@ -723,6 +754,7 @@ async function renderMessages() {
         lastMessagesSignature = signature;
 
         const container = el('messages');
+        const renderingKey = cryptoKey;
         container.replaceChildren();
 
         let shown = 0;
@@ -734,9 +766,13 @@ async function renderMessages() {
                         name: 'AES-GCM',
                         iv: base64Decode(record.iv),
                     },
-                    cryptoKey,
+                    renderingKey,
                     base64Decode(record.ciphertext)
                 );
+
+                if (cryptoKey !== renderingKey || el('chatBox').hidden) {
+                    return;
+                }
 
                 const decoded = new TextDecoder().decode(plaintext);
                 let payload;
@@ -785,32 +821,39 @@ async function renderMessages() {
     }
 }
 
-async function logout() {
-    setStatus();
+async function clearLocalChatState(username = currentUser) {
     stopMessagesPolling();
 
+    csrfToken = '';
+    cryptoKey = null;
+    currentUser = '';
+    selectedFile = null;
+    lastMessagesSignature = null;
+
+    el('chatBox').hidden = true;
+    el('loginBox').hidden = false;
+    el('messages').replaceChildren();
+    el('message').value = '';
+    el('password').value = '';
+    el('encryptionPassphrase').value = '';
+    el('fileInput').value = '';
+    el('selectedFile').textContent = 'Файл не выбран';
+
+    try {
+        await deleteCryptoKey(username);
+    } catch {
+        // Локальная очистка интерфейса не должна зависеть от IndexedDB.
+    }
+}
+
+async function logout() {
+    setStatus();
     const username = currentUser;
 
     try {
         await api('logout', { method: 'POST' });
     } finally {
-        try {
-            await deleteCryptoKey(username);
-        } catch {
-            // Даже если хранилище недоступно, завершаем выход в интерфейсе.
-        }
-
-        csrfToken = '';
-        cryptoKey = null;
-        currentUser = '';
-        selectedFile = null;
-        lastMessagesSignature = null;
-
-        el('chatBox').hidden = true;
-        el('loginBox').hidden = false;
-        el('messages').replaceChildren();
-        el('fileInput').value = '';
-        el('selectedFile').textContent = 'Файл не выбран';
+        await clearLocalChatState(username);
     }
 }
 

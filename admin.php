@@ -192,6 +192,18 @@ function updateUsers(callable $callback): void
     });
 }
 
+function resetUserSessions(string $username): void
+{
+    updateUsers(static function (array &$users) use ($username): void {
+        if (!isset($users[$username])) {
+            throw new InvalidArgumentException('Пользователь не найден.');
+        }
+
+        $passwordHash = explode(':', $users[$username], 2)[0];
+        $users[$username] = $passwordHash . ':' . bin2hex(random_bytes(32));
+    });
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $postedCsrf = (string)($_POST['csrf'] ?? '');
 
@@ -272,7 +284,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $users[$username] = password_hash($password, PASSWORD_DEFAULT);
             });
 
-            setFlash('Пароль изменён.');
+            setFlash('Пароль изменён. Все сессии пользователя сброшены.');
+        } elseif ($action === 'reset_sessions') {
+            $username = validateUsername((string)($_POST['username'] ?? ''));
+            resetUserSessions($username);
+            setFlash('Все сессии пользователя сброшены. Потребуется повторный вход.');
         } elseif ($action === 'delete') {
             $username = validateUsername((string)($_POST['username'] ?? ''));
 
@@ -463,6 +479,14 @@ if ($authenticated) {
                     </div>
                 </form>
 
+                <form method="post" onsubmit="return confirm('Сбросить все сессии этого пользователя? Потребуется повторный вход.');">
+                    <input type="hidden" name="csrf" value="<?= h($_SESSION['csrf']) ?>">
+                    <input type="hidden" name="action" value="reset_sessions">
+                    <input type="hidden" name="username" id="reset-sessions-username">
+
+                    <button type="submit">Сбросить сессии</button>
+                </form>
+
                 <form method="post" onsubmit="return confirm('Удалить пользователя?');">
                     <input type="hidden" name="csrf" value="<?= h($_SESSION['csrf']) ?>">
                     <input type="hidden" name="action" value="delete">
@@ -491,6 +515,7 @@ if ($authenticated) {
 
             document.getElementById('selected-username').textContent = username;
             document.getElementById('change-username').value = username;
+            document.getElementById('reset-sessions-username').value = username;
             document.getElementById('delete-username').value = username;
 
             userDialog.showModal();
